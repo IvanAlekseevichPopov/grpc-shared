@@ -35,9 +35,18 @@ RUN mkdir /build && cd /build \
     && chmod +x /usr/bin/grpc_php_plugin \
     && chmod +x /usr/bin/protoc
 
-RUN pecl install grpc
-RUN docker-php-ext-enable grpc
-#RUN docker-php-ext-install tokenizer
+#установка GRPC библиотеки для пхп, через pecl длиться вечно https://github.com/grpc/grpc/issues/34278
+RUN apk add --no-cache git grpc-cpp grpc-dev $PHPIZE_DEPS && \
+    GRPC_VERSION=$(apk info grpc -d | grep grpc | cut -d- -f2) && \
+    git clone --depth 1 -b v${GRPC_VERSION} https://github.com/grpc/grpc /tmp/grpc && \
+    cd /tmp/grpc/src/php/ext/grpc && \
+    phpize && \
+    ./configure && \
+    make && \
+    make install && \
+    rm -rf /tmp/grpc && \
+    apk del --no-cache git grpc-dev $PHPIZE_DEPS && \
+    echo "extension=grpc.so" > /usr/local/etc/php/conf.d/grpc.ini
 
 WORKDIR /var/www/html/
 COPY ./ /var/www/html/
