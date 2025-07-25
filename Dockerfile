@@ -1,0 +1,58 @@
+FROM php:8.3-cli-alpine
+
+RUN apk add --no-cache --virtual .build-deps \
+        $PHPIZE_DEPS \
+        linux-headers \
+        autoconf \
+        build-base \
+    && mkdir -p /tmp/pear/cache \
+    && apk add --update --no-cache \
+        openssl-dev \
+        cmake \
+        composer \
+        libunwind \
+        libunwind-dev \
+        pcre-dev \
+        icu-dev \
+        icu-data-full \
+        libzip-dev \
+        zlib-dev \
+        git \
+        go
+    # Утилита "protoc" и официальный плагин генерации клиентского кода "grpc_php_plugin"
+RUN mkdir /build && cd /build \
+    && git clone --recursive -b v1.72.x https://github.com/grpc/grpc \
+    && mkdir -p /build/grpc/cmake/build && cd /build/grpc/cmake/build \
+    && cmake ../.. \
+    && make protoc grpc_php_plugin \
+    && cd /build \
+    && composer create-project --ignore-platform-reqs spiral/roadrunner-cli \
+    && chmod +x ./roadrunner-cli/bin/rr \
+    && ./roadrunner-cli/bin/rr download-protoc-binary -l /usr/bin \
+    && cp /build/grpc/cmake/build/grpc_php_plugin /usr/bin \
+    && cp /build/grpc/cmake/build/third_party/protobuf/protoc /usr/bin \
+    && chmod +x /usr/bin/protoc-gen-php-grpc \
+    && chmod +x /usr/bin/grpc_php_plugin \
+    && chmod +x /usr/bin/protoc
+
+#установка GRPC библиотеки для пхп, через pecl длиться вечно https://github.com/grpc/grpc/issues/34278
+RUN apk add --no-cache git grpc-cpp grpc-dev $PHPIZE_DEPS && \
+    GRPC_VERSION=$(apk info grpc -d | grep grpc | cut -d- -f2) && \
+    git clone --depth 1 -b v${GRPC_VERSION} https://github.com/grpc/grpc /tmp/grpc && \
+    cd /tmp/grpc/src/php/ext/grpc && \
+    phpize && \
+    ./configure && \
+    make && \
+    make install && \
+    rm -rf /tmp/grpc && \
+    apk del --no-cache git grpc-dev $PHPIZE_DEPS && \
+    echo "extension=grpc.so" > /usr/local/etc/php/conf.d/grpc.ini
+
+WORKDIR /var/www/html/
+COPY ./ /var/www/html/
+RUN composer install --optimize-autoloader --no-interaction --no-scripts --ignore-platform-req=ext-tokenizer --ignore-platform-req=ext-sockets --ignore-platform-req=ext-grpc --ignore-platform-req=ext-dom --ignore-platform-req=ext-xml --ignore-platform-req=ext-xmlwriter --ignore-platform-req=ext-simplexml
+RUN composer download
+
+RUN apk del --purge .build-deps && \
+    pecl clear-cache && \
+    rm -rf /build
