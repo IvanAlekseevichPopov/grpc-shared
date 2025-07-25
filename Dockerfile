@@ -1,10 +1,4 @@
-FROM composer:2 AS composer-install
-
-RUN #composer install --optimize-autoloader --no-interaction --no-scripts --ignore-platform-req=ext-grpc --ignore-platform-req=ext-sockets
-
 FROM php:8.3-cli-alpine
-
-RUN apk add --no-cache
 
 RUN apk add --no-cache --virtual .build-deps \
         $PHPIZE_DEPS \
@@ -31,7 +25,6 @@ RUN mkdir /build && cd /build \
     && mkdir -p /build/grpc/cmake/build && cd /build/grpc/cmake/build \
     && cmake ../.. \
     && make protoc grpc_php_plugin \
-    # Плагин генерации серверного кода "protoc-gen-php-grpc" от roadrunner
     && cd /build \
     && composer create-project --ignore-platform-reqs spiral/roadrunner-cli \
     && chmod +x ./roadrunner-cli/bin/rr \
